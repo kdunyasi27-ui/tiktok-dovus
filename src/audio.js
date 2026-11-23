@@ -1,22 +1,22 @@
 
 let audioContext = null;
 let soundEnabled = true;
-let activeThemeTimers = [];
+let speechQueue = [];
+let speaking = false;
+let speechTimer = null;
+let themeTimers = [];
 
 const TEAM_VOICES = {
   fb: {
     intro: "Dikkat! Sahaya Fenerbahçe çıkıyor! Yaşa Fenerbahçe! Sarı lacivert!",
-    chant: "Fenerbahçe! Fenerbahçe! En büyük Fenerbahçe!",
     notes: [392, 440, 523, 440, 392, 330, 392, 523]
   },
   gs: {
     intro: "Dikkat! Sahaya Galatasaray çıkıyor! Cim Bom Bom! Şampiyon Galatasaray!",
-    chant: "Galatasaray! Galatasaray! Cimbom!",
     notes: [330, 392, 440, 523, 440, 392, 330, 392]
   },
   bjk: {
     intro: "Dikkat! Sahaya Beşiktaş çıkıyor! Kara Kartal! Şanlı Beşiktaş!",
-    chant: "Beşiktaş! Beşiktaş! Kara Kartal!",
     notes: [294, 349, 392, 440, 392, 349, 294, 392]
   }
 };
@@ -41,13 +41,11 @@ function getAudioContext() {
 export function unlockAudio() {
   const ctx = getAudioContext();
 
-  if (!ctx) return false;
-
-  if (ctx.state === "suspended") {
+  if (ctx && ctx.state === "suspended") {
     ctx.resume().catch(console.warn);
   }
 
-  return true;
+  return Boolean(ctx);
 }
 
 export function setSoundEnabled(enabled) {
@@ -62,7 +60,7 @@ export function isSoundEnabled() {
   return soundEnabled;
 }
 
-function tone(frequency, duration = 0.15, type = "sawtooth", volume = 0.12) {
+function tone(frequency, duration = 0.18, type = "triangle", volume = 0.12) {
   if (!soundEnabled) return;
 
   const ctx = getAudioContext();
@@ -109,7 +107,6 @@ function noiseHit(duration = 0.12, volume = 0.2) {
 
   source.connect(gain);
   gain.connect(ctx.destination);
-
   source.start();
 }
 
@@ -139,8 +136,12 @@ export function playEffect(type) {
 
     case "combo":
       noiseHit(0.12, 0.3);
-      setTimeout(() => noiseHit(0.12, 0.3), 140);
-      setTimeout(() => noiseHit(0.12, 0.3), 280);
+      setTimeout(() => {
+        if (soundEnabled) noiseHit(0.12, 0.3);
+      }, 140);
+      setTimeout(() => {
+        if (soundEnabled) noiseHit(0.12, 0.3);
+      }, 280);
       break;
 
     case "special":
@@ -150,7 +151,9 @@ export function playEffect(type) {
 
     case "crown":
       tone(600, 0.25, "sine", 0.2);
-      setTimeout(() => tone(800, 0.3, "sine", 0.2), 180);
+      setTimeout(() => {
+        if (soundEnabled) tone(800, 0.3, "sine", 0.2);
+      }, 180);
       break;
 
     default:
@@ -158,15 +161,17 @@ export function playEffect(type) {
   }
 }
 
-export function speakCharacter(message) {
-  if (!soundEnabled || !("speechSynthesis" in window)) return;
+function speakNext() {
+  if (!soundEnabled || speaking || speechQueue.length === 0) return;
 
-  window.speechSynthesis.cancel();
+  if (!("speechSynthesis" in window)) return;
 
+  const message = speechQueue.shift();
   const utterance = new SpeechSynthesisUtterance(message);
+
   utterance.lang = "tr-TR";
-  utterance.rate = 1.02;
-  utterance.pitch = 1.12;
+  utterance.rate = 1.05;
+  utterance.pitch = 1.1;
   utterance.volume = 1;
 
   const voices = window.speechSynthesis.getVoices();
@@ -178,7 +183,44 @@ export function speakCharacter(message) {
     utterance.voice = turkishVoice;
   }
 
+  speaking = true;
+
+  const finish = () => {
+    speaking = false;
+    clearTimeout(speechTimer);
+    speechTimer = null;
+    speakNext();
+  };
+
+  utterance.onend = finish;
+  utterance.onerror = finish;
+
   window.speechSynthesis.speak(utterance);
+
+  // Bazı Android tarayıcılarında onend gelmezse kuyruğu kilitleme.
+  speechTimer = setTimeout(() => {
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      finish();
+    }
+  }, 10000);
+}
+
+export function speakCharacter(message) {
+  if (!soundEnabled || !message) return;
+
+  if (!("speechSynthesis" in window)) {
+    console.warn("Bu tarayıcı konuşma sesini desteklemiyor.");
+    return;
+  }
+
+  // Kuyruğun aşırı büyümesini önle.
+  if (speechQueue.length >= 5) {
+    speechQueue.shift();
+  }
+
+  speechQueue.push(String(message));
+  speakNext();
 }
 
 export function playTeamIntro(teamId) {
@@ -189,51 +231,35 @@ export function playTeamIntro(teamId) {
 
   stopTeamTheme();
 
-  const ctx = getAudioContext();
-  if (!ctx) return;
-
-  // Özgün, kısa tribün melodisi; gerçek kulüp marşı kaydı değildir.
   team.notes.forEach((note, index) => {
     const timer = setTimeout(() => {
       if (soundEnabled) {
-        tone(note, 0.24, "triangle", 0.13);
-        tone(note / 2, 0.28, "sine", 0.07);
+        tone(note, 0.22, "triangle", 0.14);
+        tone(note / 2, 0.24, "sine", 0.06);
       }
-    }, index * 240);
+    }, index * 260);
 
-    activeThemeTimers.push(timer);
+    themeTimers.push(timer);
   });
 
-  const speechTimer = setTimeout(() => {
+  const introTimer = setTimeout(() => {
     speakCharacter(team.intro);
-  }, 2100);
+  }, 2300);
 
-  activeThemeTimers.push(speechTimer);
-}
-
-export function playTeamChant(teamId) {
-  const team = TEAM_VOICES[teamId];
-  if (!team) return;
-
-  speakCharacter(team.chant);
-}
-
-export function stopTeamTheme() {
-  activeThemeTimers.forEach(clearTimeout);
-  activeThemeTimers = [];
+  themeTimers.push(introTimer);
 }
 
 export function playReaction(type) {
   const reactions = {
     slap: [
-      "Ağ! Ne yapıyorsun!",
+      "Aaa! Ne yapıyorsun!",
       "Yanağım acıdı!",
       "Ulan ne tokat attın!"
     ],
     punch: [
       "Ulan ne vuruyorsun!",
       "Burnum gitti!",
-      "İmdat!"
+      "İmdat! Yardım edin!"
     ],
     kick: [
       "Anaaa! Belim gitti!",
@@ -241,7 +267,7 @@ export function playReaction(type) {
       "Yere yıkıldım!"
     ],
     stick: [
-      "İmdat sopa!",
+      "İmdat! Sopa!",
       "Tamam pes ediyorum!",
       "Yeter artık!"
     ],
@@ -264,8 +290,21 @@ export function playReaction(type) {
   return message;
 }
 
+export function stopTeamTheme() {
+  themeTimers.forEach(clearTimeout);
+  themeTimers = [];
+}
+
 export function stopAllSounds() {
   stopTeamTheme();
+
+  speechQueue = [];
+  speaking = false;
+
+  if (speechTimer) {
+    clearTimeout(speechTimer);
+    speechTimer = null;
+  }
 
   if ("speechSynthesis" in window) {
     window.speechSynthesis.cancel();

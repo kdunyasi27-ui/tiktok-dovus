@@ -1,0 +1,20 @@
+
+{
+  "name": "tiktok-dovus",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite",
+    "start": "node server/tiktok.js"
+  },
+  "dependencies": {
+    "tiktok-live-connector": "^2.1.0",
+    "express": "^5.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

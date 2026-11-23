@@ -3,39 +3,52 @@ import {
   playEffect,
   playReaction,
   setSoundEnabled,
-  isSoundEnabled,
   stopAllSounds
 } from "./audio.js";
 
-import { processGift } from "./gifts.js";
+import {
+  processGift
+} from "./gifts.js";
 
-import { TEAMS, changeTeam } from "./teams.js";
+import {
+  TEAMS
+} from "./teams.js";
 
+import {
+  connectLive
+} from "./live.js";
+
+// OYUN DURUMU
 let currentTeam = "fb";
 let health = 100;
 let soundEnabled = true;
 let actionLocked = false;
 
+// HTML ELEMANLARI
 const fighter = document.getElementById("fighter");
 const healthBar = document.getElementById("healthBar");
 const speechBubble = document.getElementById("speechBubble");
 const impactEffect = document.getElementById("impactEffect");
 const announcement = document.getElementById("giftAnnouncement");
+const teamName = document.getElementById("teamName");
+const shirtName = document.getElementById("shirtName");
+const lastGift = document.getElementById("lastGift");
+const lastUser = document.getElementById("lastUser");
 
+// CAN SİSTEMİ
 function updateHealth(damage) {
   health = Math.max(0, health - damage);
 
   healthBar.style.width = `${health}%`;
   healthBar.dataset.health = String(health);
 
+  if (health <= 20 && health > 0) {
+    speechBubble.textContent = "Artık dayanamıyorum!";
+  }
+
   if (health <= 0) {
     speechBubble.textContent = "Tamam, pes ediyorum!";
     announcement.textContent = "KARAKTER PES ETTİ!";
-    return;
-  }
-
-  if (health <= 20) {
-    speechBubble.textContent = "Artık dayanamıyorum!";
   }
 }
 
@@ -43,12 +56,91 @@ function resetHealth() {
   health = 100;
   healthBar.style.width = "100%";
   healthBar.dataset.health = "100";
+
   speechBubble.textContent = "Yeniden hazırım!";
   announcement.textContent = "YENİ RAUNT!";
 }
 
-function animateAttack(type, damage) {
-  if (actionLocked) return;
+// ANİMASYON SİSTEMİ
+const animations = {
+  slap: {
+    css: "hit",
+    effect: "ŞAP!",
+    sound: "slap",
+    reaction: "slap",
+    damage: 5
+  },
+
+  punch: {
+    css: "punch",
+    effect: "POW!",
+    sound: "punch",
+    reaction: "punch",
+    damage: 7
+  },
+
+  lightPunch: {
+    css: "punch",
+    effect: "POW!",
+    sound: "punch",
+    reaction: "punch",
+    damage: 3
+  },
+
+  kick: {
+    css: "kick",
+    effect: "BOOM!",
+    sound: "kick",
+    reaction: "kick",
+    damage: 9
+  },
+
+  stick: {
+    css: "special",
+    effect: "💥 SOPA!",
+    sound: "stick",
+    reaction: "stick",
+    damage: 13
+  },
+
+  combo: {
+    css: "combo",
+    effect: "ŞAP! ŞAP! ŞAP!",
+    sound: "combo",
+    reaction: "combo",
+    damage: 12
+  },
+
+  specialPunch: {
+    css: "special",
+    effect: "👊 ÖZEL YUMRUK!",
+    sound: "special",
+    reaction: "special",
+    damage: 14
+  },
+
+  bigHit: {
+    css: "special",
+    effect: "💥 BÜYÜK DARBE!",
+    sound: "special",
+    reaction: "special",
+    damage: 22
+  },
+
+  special: {
+    css: "special",
+    effect: "⚡ ÖZEL SALDIRI!",
+    sound: "special",
+    reaction: "special",
+    damage: 18
+  }
+};
+
+// SALDIRI MOTORU
+function animateAttack(type) {
+  const config = animations[type];
+
+  if (!config || actionLocked) return;
 
   if (health <= 0) {
     resetHealth();
@@ -56,85 +148,42 @@ function animateAttack(type, damage) {
 
   actionLocked = true;
 
-  const animations = {
-    slap: {
-      css: "hit",
-      effect: "ŞAP!",
-      reaction: "slap",
-      sound: "slap"
-    },
-
-    punch: {
-      css: "punch",
-      effect: "POW!",
-      reaction: "punch",
-      sound: "punch"
-    },
-
-    kick: {
-      css: "kick",
-      effect: "BOOM!",
-      reaction: "kick",
-      sound: "kick"
-    },
-
-    stick: {
-      css: "special",
-      effect: "💥",
-      reaction: "stick",
-      sound: "stick"
-    },
-
-    combo: {
-      css: "combo",
-      effect: "ŞAP! ŞAP! ŞAP!",
-      reaction: "combo",
-      sound: "combo"
-    },
-
-    special: {
-      css: "special",
-      effect: "⚡ ÖZEL SALDIRI!",
-      reaction: "special",
-      sound: "special"
-    }
-  };
-
-  const attack = animations[type];
-
-  if (!attack) {
-    actionLocked = false;
-    return;
-  }
-
   fighter.classList.remove(
-    "hit", "punch", "kick", "combo", "special"
+    "hit",
+    "punch",
+    "kick",
+    "combo",
+    "special"
   );
 
   void fighter.offsetWidth;
 
-  fighter.classList.add(attack.css);
+  fighter.classList.add(config.css);
 
-  impactEffect.textContent = attack.effect;
+  impactEffect.textContent = config.effect;
 
-  playEffect(attack.sound);
-  playReaction(attack.reaction);
+  announcement.textContent = config.effect;
 
-  updateHealth(damage);
+  playEffect(config.sound);
 
-  announcement.textContent = attack.effect;
+  if (soundEnabled) {
+    playReaction(config.reaction);
+  }
+
+  updateHealth(config.damage);
 
   setTimeout(() => {
-    fighter.classList.remove(attack.css);
+    fighter.classList.remove(config.css);
     actionLocked = false;
   }, 850);
 }
 
+// ELLE SALDIRI BUTONLARI
 const attackButtons = {
-  slap: ["slap", 5],
-  punch: ["punch", 7],
-  kick: ["kick", 9],
-  stick: ["stick", 13]
+  slap: "slap",
+  punch: "punch",
+  kick: "kick",
+  stick: "stick"
 };
 
 document.querySelectorAll("[data-attack]").forEach(button => {
@@ -142,45 +191,53 @@ document.querySelectorAll("[data-attack]").forEach(button => {
     const action = attackButtons[button.dataset.attack];
 
     if (action) {
-      animateAttack(action[0], action[1]);
+      animateAttack(action);
     }
   });
 });
 
+// TAKIM SİSTEMİ
 function setTeam(teamId) {
   const team = TEAMS[teamId];
 
   if (!team) return;
 
   currentTeam = teamId;
+  window.currentTeam = currentTeam;
 
   fighter.classList.remove("fb", "gs", "bjk");
   fighter.classList.add(team.id);
 
-  document.getElementById("teamName").textContent = team.name;
-  document.getElementById("shirtName").textContent = team.shirt;
+  teamName.textContent = team.name;
+  shirtName.textContent = team.shirt;
 
-  const slogan =
-    team.speech[Math.floor(Math.random() * team.speech.length)];
+  const slogan = team.slogan;
 
   speechBubble.textContent = slogan;
   announcement.textContent = slogan;
 
-  if (soundEnabled) {
+  if (soundEnabled && "speechSynthesis" in window) {
+    speechSynthesis.cancel();
+
     const voice = new SpeechSynthesisUtterance(slogan);
+
     voice.lang = "tr-TR";
     voice.rate = 1;
-    speechSynthesis.cancel();
+    voice.pitch = 1;
+
     speechSynthesis.speak(voice);
   }
 }
 
+// TAÇ İLE TAKIM DEĞİŞTİRME
 function handleCrown() {
-  const nextTeam = {
+  const nextTeams = {
     fb: "gs",
     gs: "bjk",
     bjk: "fb"
-  }[currentTeam];
+  };
+
+  const nextTeam = nextTeams[currentTeam];
 
   if (!nextTeam) return;
 
@@ -188,32 +245,82 @@ function handleCrown() {
   setTeam(nextTeam);
 }
 
+// HEDİYE BİLDİRİMLERİ
+function updateGiftInfo(event) {
+  const username =
+    event.username ||
+    event.user ||
+    "İzleyici";
+
+  const giftName =
+    event.giftName ||
+    event.gift ||
+    "Hediye";
+
+  if (lastGift) {
+    lastGift.textContent = giftName;
+  }
+
+  if (lastUser) {
+    lastUser.textContent = username;
+  }
+
+  announcement.textContent =
+    `${username} → ${giftName}`;
+}
+
+// TIKTOK HEDİYE MOTORU
 function handleGift(event) {
   if (!event) return;
 
-  const giftName = event.giftName || event.gift || "";
+  const giftName = String(
+    event.giftName || event.gift || ""
+  ).toLocaleLowerCase("tr-TR");
+
+  updateGiftInfo(event);
 
   if (
-    giftName.toLocaleLowerCase("tr-TR").includes("taç") ||
-    giftName.toLowerCase().includes("crown")
+    giftName === "crown" ||
+    giftName === "taç"
   ) {
     handleCrown();
+    return;
+  }
+
+  const giftTypes = {
+    rose: "slap",
+    coffee: "lightPunch",
+    evil: "lightPunch",
+    bouquet: "combo",
+    rosa: "specialPunch",
+    wand: "bigHit",
+    glasses: "special"
+  };
+
+  const giftId = event.gift;
+
+  const action = giftTypes[giftId];
+
+  if (action) {
+    animateAttack(action);
     return;
   }
 
   processGift(event);
 }
 
+// DIŞ BAĞLANTIDAN HEDİYE ALMA
+window.handleGiftEvent = handleGift;
+
 window.addEventListener("tiktok-gift", event => {
   handleGift(event.detail);
 });
 
-window.handleGiftEvent = handleGift;
-
+// TAM EKRAN
 const fullscreenButton =
   document.getElementById("fullscreenBtn");
 
-fullscreenButton.addEventListener("click", async () => {
+fullscreenButton?.addEventListener("click", async () => {
   try {
     if (!document.fullscreenElement) {
       await document.documentElement.requestFullscreen();
@@ -225,9 +332,11 @@ fullscreenButton.addEventListener("click", async () => {
   }
 });
 
-const soundButton = document.getElementById("soundBtn");
+// SES AÇMA / KAPATMA
+const soundButton =
+  document.getElementById("soundBtn");
 
-soundButton.addEventListener("click", () => {
+soundButton?.addEventListener("click", () => {
   soundEnabled = !soundEnabled;
 
   setSoundEnabled(soundEnabled);
@@ -241,17 +350,36 @@ soundButton.addEventListener("click", () => {
   }
 });
 
+// KLAVYE KONTROLLERİ
 window.addEventListener("keydown", event => {
-  if (event.key === "1") animateAttack("slap", 5);
-  if (event.key === "2") animateAttack("punch", 7);
-  if (event.key === "3") animateAttack("kick", 9);
-  if (event.key === "4") animateAttack("stick", 13);
+  const keys = {
+    "1": "slap",
+    "2": "punch",
+    "3": "kick",
+    "4": "stick"
+  };
+
+  const action = keys[event.key];
+
+  if (action) {
+    animateAttack(action);
+  }
 });
 
+// MOBİL BAŞLANGIÇ
 window.addEventListener("contextmenu", event => {
   event.preventDefault();
 });
 
+// İLK DURUM
+healthBar.style.width = "100%";
+healthBar.dataset.health = "100";
+
 window.currentTeam = currentTeam;
 
-console.log("TikTok Dövüş Arenası başlatıldı.");
+// TIKTOK LIVE BAĞLANTISI
+window.addEventListener("load", () => {
+  connectLive();
+});
+
+console.log("TİKTOK DÖVÜŞ ARENASI HAZIR");

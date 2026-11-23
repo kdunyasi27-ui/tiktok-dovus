@@ -1,0 +1,113 @@
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#101827">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>TikTok Dövüş Arenası</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <main id="game">
+
+    <header class="topbar">
+      <div class="live-status">
+        <span class="live-dot"></span>
+        TIKTOK LIVE ARENA
+      </div>
+      <div id="teamName">FENERBAHÇE</div>
+      <button id="fullscreenBtn" aria-label="Tam ekran">⛶</button>
+    </header>
+
+    <section class="arena" id="arena">
+
+      <div class="stadium-background"></div>
+
+      <div class="health-panel">
+        <span>RAKİP CANI</span>
+        <div class="health-track">
+          <div id="healthBar"></div>
+        </div>
+      </div>
+
+      <div id="fighter" class="fighter fb">
+        <div class="character-shadow"></div>
+
+        <div class="character-head">
+          <div class="character-hair"></div>
+          <div class="character-eyes">• •</div>
+          <div class="character-mouth">︶</div>
+        </div>
+
+        <div class="character-body">
+          <span id="shirtName">FB</span>
+        </div>
+
+        <div class="character-arm left"></div>
+        <div class="character-arm right"></div>
+        <div class="character-leg left"></div>
+        <div class="character-leg right"></div>
+
+        <div id="speechBubble">Hadi bakalım!</div>
+        <div id="impactEffect"></div>
+      </div>
+
+      <div id="giftAnnouncement">
+        HEDİYELERİNİZİ BEKLİYORUZ!
+      </div>
+
+    </section>
+
+    <section class="control-area">
+
+      <div class="attack-panel">
+        <h2>SALDIRILAR</h2>
+        <button data-attack="slap">🖐️ TOKAT</button>
+        <button data-attack="punch">👊 YUMRUK</button>
+        <button data-attack="kick">🦶 TEKME</button>
+        <button data-attack="stick">🪵 SOPA</button>
+      </div>
+
+      <div class="gift-panel">
+        <h2>TIKTOK HEDİYELERİ</h2>
+
+        <div class="gift-list">
+          <div>🌹 Gül <span>Tokat</span></div>
+          <div>☕ Kahve <span>Hafif yumruk</span></div>
+          <div>🧿 Nazar Boncuğu <span>Hafif yumruk</span></div>
+          <div>💐 Buket <span>Seri tokat</span></div>
+          <div>🌹 Rosa <span>Özel yumruk</span></div>
+          <div>🪄 Asa <span>Büyük darbe</span></div>
+          <div>🕶️ Gözlük <span>Özel saldırı</span></div>
+          <div>👑 Taç <span>Takım değiştir</span></div>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="live-feed">
+      <div>
+        <strong>SON HEDİYE</strong>
+        <span id="lastGift">Henüz hediye yok</span>
+      </div>
+
+      <div>
+        <strong>SON GÖNDEREN</strong>
+        <span id="lastUser">Bekleniyor...</span>
+      </div>
+    </section>
+
+    <footer>
+      <span id="connectionStatus">Bağlantı bekleniyor</span>
+      <button id="soundBtn">🔊 SES AÇIK</button>
+    </footer>
+
+  </main>
+
+  <script type="module" src="/src/game.js"></script>
+</body>
+</html>

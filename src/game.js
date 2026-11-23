@@ -16,6 +16,7 @@ let currentTeam = "fb";
 let health = 100;
 let soundEnabled = true;
 let actionLocked = false;
+let firstSoundStarted = false;
 
 const fighter = document.getElementById("fighter");
 const healthBar = document.getElementById("healthBar");
@@ -41,10 +42,6 @@ function updateHealth(damage) {
     if (speechBubble) {
       speechBubble.textContent = "Artık dayanamıyorum!";
     }
-
-    if (soundEnabled) {
-      playReaction("special");
-    }
   }
 
   if (health <= 0) {
@@ -54,10 +51,6 @@ function updateHealth(damage) {
 
     if (announcement) {
       announcement.textContent = "KARAKTER PES ETTİ!";
-    }
-
-    if (soundEnabled) {
-      playReaction("stick");
     }
   }
 }
@@ -247,7 +240,7 @@ function setTeam(teamId) {
     announcement.textContent = team.slogan;
   }
 
-  if (changed && soundEnabled) {
+  if (changed && soundEnabled && firstSoundStarted) {
     unlockAudio();
     playTeamIntro(teamId);
   }
@@ -291,20 +284,30 @@ soundButton?.addEventListener("click", () => {
   if (!soundEnabled) {
     soundEnabled = true;
 
-    unlockAudio();
     setSoundEnabled(true);
+    unlockAudio();
 
     soundButton.textContent = "🔊 SES AÇIK";
 
+    firstSoundStarted = true;
     playTeamIntro(currentTeam);
-  } else {
-    soundEnabled = false;
 
-    setSoundEnabled(false);
-    stopAllSounds();
-
-    soundButton.textContent = "🔇 SES KAPALI";
+    return;
   }
+
+  if (!firstSoundStarted) {
+    unlockAudio();
+    firstSoundStarted = true;
+    playTeamIntro(currentTeam);
+    soundButton.textContent = "🔊 SES AÇIK";
+    return;
+  }
+
+  soundEnabled = false;
+  setSoundEnabled(false);
+  stopAllSounds();
+
+  soundButton.textContent = "🔇 SES KAPALI";
 });
 
 window.addEventListener("keydown", event => {
@@ -332,8 +335,6 @@ if (healthBar) {
 }
 
 window.currentTeam = currentTeam;
-
-// İlk takımın görünümünü ayarla; ses için kullanıcı etkileşimini bekle.
 setTeam("fb");
 
 window.addEventListener("load", connectLive);

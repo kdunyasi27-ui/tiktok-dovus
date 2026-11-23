@@ -14,7 +14,7 @@ const wss = new WebSocketServer({ server });
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const LIVE_USERNAME = process.env.LIVE_USERNAME;
+const LIVE_USERNAME = (process.env.LIVE_USERNAME || "").replace(/^@/, "").trim();
 
 let connection = null;
 let liveConnected = false;
@@ -45,6 +45,7 @@ function identifyGift(name) {
 
   for (const [id, aliases] of Object.entries(giftAliases)) {
     if (
+      normalized === normalize(id) ||
       aliases.some(alias => normalize(alias) === normalized)
     ) {
       return id;
@@ -59,7 +60,11 @@ function broadcast(data) {
 
   for (const client of wss.clients) {
     if (client.readyState === 1) {
-      client.send(message);
+      try {
+        client.send(message);
+      } catch (error) {
+        console.error("WebSocket gönderim hatası:", error.message);
+      }
     }
   }
 }
@@ -74,103 +79,122 @@ function sendStatus() {
 function scheduleReconnect() {
   if (reconnectTimer || !LIVE_USERNAME) return;
 
-  reconnectTimer = setTimeout(async () => {
+  console.log("TikTok için 5 saniye sonra yeniden bağlantı denenecek.");
+
+  reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    await connectTikTok();
+    connectTikTok();
   }, 5000);
 }
 
 async function connectTikTok() {
   if (!LIVE_USERNAME) {
-    console.error("LIVE_USERNAME Render ortam değişkeninde eksik.");
+    console.error("LIVE_USERNAME ortam değişkeni eksik.");
     return false;
   }
 
-  if (connecting || connection?.isConnected) {
-    return Boolean(connection?.isConnected);
+  if (connecting) return false;
+
+  if (connection?.isConnected) {
+    return true;
   }
 
   connecting = true;
 
-  const client = new TikTokLiveConnection(LIVE_USERNAME);
-  connection = client;
-
-  client.on(WebcastEvent.GIFT, event => {
-    // Hediye serisi tamamlanmadan tekrar tekrar işleme.
-    if (
-      event.giftDetails?.giftType === 1 &&
-      !event.repeatEnd
-    ) {
-      return;
-    }
-
-    const giftName =
-      event.giftDetails?.giftName ||
-      event.extendedGiftInfo?.name ||
-      "";
-
-    const gift = identifyGift(giftName);
-
-    if (!gift) {
-      console.log("Tanımlanmayan hediye:", giftName);
-      return;
-    }
-
-    const username =
-      event.user?.nickname ||
-      event.user?.uniqueId ||
-      "İzleyici";
-
-    broadcast({
-      type: "gift",
-      gift,
-      giftName,
-      username,
-      repeatCount: Math.max(1, Number(event.repeatCount) || 1),
-      timestamp: Date.now()
-    });
-
-    console.log(`${username}: ${giftName}`);
-  });
-
-  client.on(WebcastEvent.CHAT, event => {
-    broadcast({
-      type: "chat",
-      username: event.user?.nickname || "İzleyici",
-      comment: event.comment || ""
-    });
-  });
-
-  client.on("connected", () => {
-    liveConnected = true;
-    console.log("TikTok LIVE bağlantısı başarılı.");
-    sendStatus();
-  });
-
-  client.on("disconnected", () => {
-    liveConnected = false;
-    console.log("TikTok bağlantısı kesildi.");
-    sendStatus();
-
-    if (connection === client) {
-      connection = null;
-    }
-
-    scheduleReconnect();
-  });
-
-  client.on("error", error => {
-    console.error("TikTok bağlantı hatası:", error);
-  });
+  let client;
 
   try {
+    client = new TikTokLiveConnection(LIVE_USERNAME);
+    connection = client;
+
+    client.on(WebcastEvent.GIFT, event => {
+      if (
+        event.giftDetails?.giftType === 1 &&
+        !event.repeatEnd
+      ) {
+        return;
+      }
+
+      const giftName =
+        event.giftDetails?.giftName ||
+        event.extendedGiftInfo?.name ||
+        event.giftName ||
+        "";
+
+      const gift = identifyGift(giftName);
+
+      if (!gift) {
+        console.log("Tanımlanmayan hediye:", giftName);
+        return;
+      }
+
+      const username =
+        event.user?.nickname ||
+        event.user?.uniqueId ||
+        "İzleyici";
+
+      broadcast({
+        type: "gift",
+        gift,
+        giftName,
+        username,
+        repeatCount: Math.max(
+          1,
+          Math.min(100, Number(event.repeatCount) || 1)
+        ),
+        timestamp: Date.now()
+      });
+
+      console.log(`${username}: ${giftName}`);
+    });
+
+    client.on(WebcastEvent.CHAT, event => {
+      broadcast({
+        type: "chat",
+        username: event.user?.nickname || "İzleyici",
+        comment: event.comment || ""
+      });
+    });
+
+    client.on("connected", () => {
+      liveConnected = true;
+      console.log("TikTok LIVE bağlantısı başarılı.");
+      sendStatus();
+    });
+
+    client.on("disconnected", () => {
+      liveConnected = false;
+      console.log("TikTok LIVE bağlantısı kesildi.");
+      sendStatus();
+
+      if (connection === client) {
+        connection = null;
+      }
+
+      scheduleReconnect();
+    });
+
+    client.on("error", error => {
+      console.error("TikTok bağlantı hatası:", error?.message || error);
+
+      if (connection === client && !client.isConnected) {
+        liveConnected = false;
+        connection = null;
+        sendStatus();
+        scheduleReconnect();
+      }
+    });
+
     await client.connect();
 
-    liveConnected = true;
-    sendStatus();
+    if (connection === client) {
+      liveConnected = true;
+      sendStatus();
+      console.log(`@${LIVE_USERNAME} yayınına bağlanıldı.`);
+    }
 
-    console.log(`@${LIVE_USERNAME} yayınına bağlanıldı.`);
     return true;
+
   } catch (error) {
     liveConnected = false;
 
@@ -178,11 +202,16 @@ async function connectTikTok() {
       connection = null;
     }
 
-    console.error("TikTok bağlantısı kurulamadı:", error.message);
-    sendStatus();
+    console.error(
+      "TikTok bağlantısı kurulamadı:",
+      error?.message || error
+    );
 
+    sendStatus();
     scheduleReconnect();
+
     return false;
+
   } finally {
     connecting = false;
   }
@@ -191,6 +220,11 @@ async function connectTikTok() {
 wss.on("connection", socket => {
   socket.send(JSON.stringify({
     type: "connection",
+    connected: liveConnected
+  }));
+
+  socket.send(JSON.stringify({
+    type: "status",
     connected: liveConnected
   }));
 });
@@ -203,14 +237,11 @@ app.get("/health", (req, res) => {
   });
 });
 
-// İsteğe bağlı manuel bağlantı; otomatik bağlantı da aktiftir.
 app.post("/connect", async (req, res) => {
-  const secret = req.headers["x-admin-secret"];
+  const adminSecret = process.env.ADMIN_SECRET;
+  const suppliedSecret = req.headers["x-admin-secret"];
 
-  if (
-    !process.env.ADMIN_SECRET ||
-    secret !== process.env.ADMIN_SECRET
-  ) {
+  if (!adminSecret || suppliedSecret !== adminSecret) {
     return res.status(401).json({
       error: "Yetkisiz erişim"
     });
@@ -226,7 +257,6 @@ app.post("/connect", async (req, res) => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`TikTok sunucusu ${PORT} portunda çalışıyor.`);
 
-  // Render sunucusu açıldığında otomatik bağlanmayı dene.
   setTimeout(() => {
     connectTikTok();
   }, 1500);

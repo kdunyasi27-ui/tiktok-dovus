@@ -5,16 +5,28 @@ const LIVE_SERVER = import.meta.env.VITE_LIVE_SERVER;
 
 let socket = null;
 let reconnectTimer = null;
+let manuallyDisconnected = false;
 
 export function connectLive() {
   if (!LIVE_SERVER) {
     console.error("VITE_LIVE_SERVER ayarlanmamış.");
+    updateStatus("SUNUCU ADRESİ EKSİK");
     return;
   }
 
-  if (socket && socket.readyState <= 1) return;
+  if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) {
+    return;
+  }
 
-  socket = new WebSocket(LIVE_SERVER);
+  manuallyDisconnected = false;
+
+  try {
+    socket = new WebSocket(LIVE_SERVER);
+  } catch (error) {
+    console.error("WebSocket oluşturulamadı:", error);
+    scheduleReconnect();
+    return;
+  }
 
   socket.onopen = () => {
     console.log("LIVE sunucusuna bağlanıldı.");
@@ -27,18 +39,17 @@ export function connectLive() {
 
       if (data.type === "gift") {
         processGift({
-          giftName: data.gift,
-          username: data.username
+          giftName: data.giftName || data.gift || "",
+          giftId: data.gift || "",
+          gift: data.gift || "",
+          username: data.username || "İzleyici",
+          repeatCount: data.repeatCount || 1
         });
-      }
-
-      if (data.type === "status") {
-        updateStatus(
-          data.connected ? "TIKTOK LIVE BAĞLI" : "TIKTOK LIVE KAPALI"
-        );
-      }
-
-      if (data.type === "chat") {
+      } else if (data.type === "status") {
+        updateStatus(data.connected ? "TIKTOK LIVE BAĞLI" : "TIKTOK LIVE KAPALI");
+      } else if (data.type === "connection") {
+        updateStatus(data.connected ? "TIKTOK LIVE BAĞLI" : "SUNUCU BAĞLI — TIKTOK BEKLENİYOR");
+      } else if (data.type === "chat") {
         updateChat(data.username, data.comment);
       }
     } catch (error) {
@@ -47,13 +58,24 @@ export function connectLive() {
   };
 
   socket.onclose = () => {
+    socket = null;
     updateStatus("BAĞLANTI KESİLDİ");
-    reconnectTimer = setTimeout(connectLive, 5000);
+    scheduleReconnect();
   };
 
   socket.onerror = error => {
     console.error("WebSocket hatası:", error);
+    updateStatus("BAĞLANTI HATASI");
   };
+}
+
+function scheduleReconnect() {
+  if (manuallyDisconnected || reconnectTimer) return;
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectLive();
+  }, 5000);
 }
 
 function updateStatus(message) {
@@ -63,18 +85,18 @@ function updateStatus(message) {
 
 function updateChat(username, comment) {
   const element = document.getElementById("giftAnnouncement");
-
-  if (element) {
-    element.textContent = `${username}: ${comment}`;
-  }
+  if (element) element.textContent = `${username || "İzleyici"}: ${comment || ""}`;
 }
 
 export function disconnectLive() {
+  manuallyDisconnected = true;
   clearTimeout(reconnectTimer);
+  reconnectTimer = null;
 
   if (socket) {
-    socket.close();
+    const oldSocket = socket;
     socket = null;
+    oldSocket.close();
   }
 
   updateStatus("BAĞLANTI KAPATILDI");
